@@ -12,8 +12,11 @@ import com.grack.nanojson.JsonParserException;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -23,12 +26,10 @@ import java.util.regex.PatternSyntaxException;
  * Helper class to enforce audio-only mode for videos unless their title matches
  * one of the regex patterns defined in audio_only_exceptions.json.
  * <p>
- * The JSON file is loaded from (in order of priority):
- * <ol>
- *     <li>App's external files directory (Android/data/[package]/files/)</li>
- *     <li>App's internal files directory</li>
- *     <li>Bundled assets (default patterns)</li>
- * </ol>
+ * The JSON file is located at:
+ * {@code /storage/emulated/0/Android/data/[package]/files/audio_only_exceptions.json}
+ * <p>
+ * If the file doesn't exist, it will be created with an example pattern.
  * <p>
  * File format:
  * <pre>
@@ -44,12 +45,13 @@ public final class AudioOnlyModeHelper {
     private static final String TAG = AudioOnlyModeHelper.class.getSimpleName();
     private static final String CONFIG_FILE_NAME = "audio_only_exceptions.json";
     private static final String JSON_PATTERNS_KEY = "patterns";
+    private static final String DEFAULT_CONFIG_CONTENT =
+            "{\n  \"patterns\": [\n    \"put_your_regex_here\"\n  ]\n}\n";
 
     // Cached patterns - reloaded when file changes
     private static List<Pattern> cachedPatterns = null;
     private static long lastModified = 0;
     private static File configFile = null;
-    private static boolean useAssets = false;
 
     private AudioOnlyModeHelper() {
     }
@@ -90,85 +92,62 @@ public final class AudioOnlyModeHelper {
 
     /**
      * Loads regex patterns from the config file, using cache if file hasn't changed.
-     * Checks external files directory first, then internal files, then bundled assets.
+     * Creates the config file with an example pattern if it doesn't exist.
      *
      * @param context the application context
      * @return list of compiled regex patterns
      */
     @NonNull
     private static synchronized List<Pattern> loadPatterns(@NonNull final Context context) {
-        if (configFile == null && !useAssets) {
-            // Try external files directory first (more accessible to users)
+        if (configFile == null) {
+            // Use external files directory (accessible to users)
             final File externalDir = context.getExternalFilesDir(null);
             if (externalDir != null) {
-                final File externalFile = new File(externalDir, CONFIG_FILE_NAME);
-                if (externalFile.exists()) {
-                    configFile = externalFile;
+                configFile = new File(externalDir, CONFIG_FILE_NAME);
+                // Create default config file if it doesn't exist
+                if (!configFile.exists()) {
+                    createDefaultConfigFile(configFile);
                 }
-            }
-            // Fall back to internal files directory
-            if (configFile == null) {
-                final File internalFile = new File(context.getFilesDir(), CONFIG_FILE_NAME);
-                if (internalFile.exists()) {
-                    configFile = internalFile;
-                }
-            }
-            // Fall back to bundled assets
-            if (configFile == null) {
-                useAssets = true;
             }
         }
 
-        // If using assets and already cached, return cache
-        if (useAssets && cachedPatterns != null) {
+        // If no config file available, return empty list
+        if (configFile == null || !configFile.exists()) {
+            Log.e(TAG, "Cannot access config file location");
+            cachedPatterns = new ArrayList<>();
             return cachedPatterns;
         }
 
-        // If using file, check if it was modified since last load
-        if (!useAssets) {
-            final long currentModified = configFile.lastModified();
-            if (cachedPatterns != null && currentModified == lastModified) {
-                return cachedPatterns;
-            }
-            lastModified = currentModified;
+        // Check if file was modified since last load
+        final long currentModified = configFile.lastModified();
+        if (cachedPatterns != null && currentModified == lastModified) {
+            return cachedPatterns;
         }
+        lastModified = currentModified;
 
         // Reload patterns
         cachedPatterns = new ArrayList<>();
 
-        try {
-            final InputStream is;
-            final String source;
-            if (useAssets) {
-                is = context.getAssets().open(CONFIG_FILE_NAME);
-                source = "assets";
-            } else {
-                is = new FileInputStream(configFile);
-                source = configFile.getAbsolutePath();
-            }
+        try (InputStream is = new FileInputStream(configFile)) {
+            final JsonArray patternsArray = JsonParser.object()
+                    .from(is)
+                    .getArray(JSON_PATTERNS_KEY);
 
-            try {
-                final JsonArray patternsArray = JsonParser.object()
-                        .from(is)
-                        .getArray(JSON_PATTERNS_KEY);
-
-                if (patternsArray != null) {
-                    for (final Object obj : patternsArray) {
-                        if (obj instanceof String) {
-                            try {
-                                cachedPatterns.add(Pattern.compile((String) obj,
-                                        Pattern.CASE_INSENSITIVE));
-                            } catch (final PatternSyntaxException e) {
-                                Log.e(TAG, "Invalid regex pattern: " + obj, e);
-                            }
+            if (patternsArray != null) {
+                for (final Object obj : patternsArray) {
+                    if (obj instanceof String) {
+                        try {
+                            cachedPatterns.add(Pattern.compile((String) obj,
+                                    Pattern.CASE_INSENSITIVE));
+                        } catch (final PatternSyntaxException e) {
+                            Log.e(TAG, "Invalid regex pattern: " + obj, e);
                         }
                     }
                 }
-
-                Log.d(TAG, "Loaded " + cachedPatterns.size() + " patterns from: " + source);
-            } finally {
-                is.close();
             }
+
+            Log.d(TAG, "Loaded " + cachedPatterns.size() + " patterns from: "
+                    + configFile.getAbsolutePath());
         } catch (final IOException | JsonParserException e) {
             Log.e(TAG, "Error reading config file", e);
             cachedPatterns = new ArrayList<>();
@@ -178,13 +157,33 @@ public final class AudioOnlyModeHelper {
     }
 
     /**
+     * Creates the default config file with an example pattern.
+     *
+     * @param file the file to create
+     */
+    private static void createDefaultConfigFile(@NonNull final File file) {
+        try {
+            final File parentDir = file.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                parentDir.mkdirs();
+            }
+            try (OutputStreamWriter writer = new OutputStreamWriter(
+                    new FileOutputStream(file), StandardCharsets.UTF_8)) {
+                writer.write(DEFAULT_CONFIG_CONTENT);
+            }
+            Log.d(TAG, "Created default config file: " + file.getAbsolutePath());
+        } catch (final IOException e) {
+            Log.e(TAG, "Failed to create default config file", e);
+        }
+    }
+
+    /**
      * Clears the cached patterns, forcing a reload on next check.
      */
     public static synchronized void clearCache() {
         cachedPatterns = null;
         lastModified = 0;
         configFile = null;
-        useAssets = false;
     }
 }
 
