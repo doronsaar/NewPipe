@@ -71,6 +71,7 @@ import org.schabi.newpipe.fragments.detail.VideoDetailFragment;
 import org.schabi.newpipe.ktx.AnimationType;
 import org.schabi.newpipe.player.Player;
 import org.schabi.newpipe.player.gesture.BasePlayerGestureListener;
+import org.schabi.newpipe.player.helper.AudioOnlyModeHelper;
 import org.schabi.newpipe.player.gesture.DisplayPortion;
 import org.schabi.newpipe.player.helper.PlayerHelper;
 import org.schabi.newpipe.player.mediaitem.MediaItemTag;
@@ -117,6 +118,12 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
     @Nullable
     private SurfaceHolderCallback surfaceHolderCallback;
     boolean surfaceIsSetup = false;
+
+    /**
+     * Indicates if forced audio-only mode is active because the video title
+     * doesn't match any pattern in audio_only_exceptions.json.
+     */
+    private boolean isForcedAudioOnlyMode = false;
 
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -1032,6 +1039,33 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
             binding.playbackEndTime.setVisibility(View.GONE);
             binding.playbackLiveSync.setVisibility(View.GONE);
 
+            // Check if forced audio-only mode should be applied
+            final String videoTitle = player.getVideoTitle();
+            isForcedAudioOnlyMode = !AudioOnlyModeHelper.shouldDisplayVideo(context, videoTitle);
+
+            // If forced audio-only mode, disable video renderer and hide video surface
+            if (isForcedAudioOnlyMode) {
+                disableVideoRendererForForcedAudioOnly();
+                binding.surfaceView.setVisibility(View.GONE);
+                binding.endScreen.setVisibility(View.VISIBLE);
+                clearVideoSurface();
+
+                // Set appropriate time display based on stream type
+                switch (info.getStreamType()) {
+                    case LIVE_STREAM:
+                    case AUDIO_LIVE_STREAM:
+                        binding.playbackLiveSync.setVisibility(View.VISIBLE);
+                        break;
+                    default:
+                        binding.playbackEndTime.setVisibility(View.VISIBLE);
+                        break;
+                }
+
+                buildPlaybackSpeedMenu();
+                binding.playbackSpeed.setVisibility(View.VISIBLE);
+                return;
+            }
+
             switch (info.getStreamType()) {
                 case AUDIO_STREAM:
                 case POST_LIVE_AUDIO_STREAM:
@@ -1076,6 +1110,18 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
             buildPlaybackSpeedMenu();
             binding.playbackSpeed.setVisibility(View.VISIBLE);
         });
+    }
+
+    /**
+     * Disables the video renderer in ExoPlayer to prevent any video output
+     * when forced audio-only mode is active.
+     */
+    private void disableVideoRendererForForcedAudioOnly() {
+        if (player.getExoPlayer() != null && player.getTrackSelector() != null) {
+            player.getTrackSelector().setParameters(
+                    player.getTrackSelector().buildUponParameters()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true));
+        }
     }
     //endregion
 
@@ -1577,8 +1623,15 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
      * player, the root view is attached to a parent and the surface view is valid/unreleased (the
      * latter two conditions prevent "The surface has been released" errors). So this function can
      * be called many times and even while the UI is in unready states.
+     * <p>
+     * Video surface will NOT be setup if forced audio-only mode is active.
      */
     public void setupVideoSurfaceIfNeeded() {
+        // Do not setup video surface if forced audio-only mode is active
+        if (isForcedAudioOnlyMode) {
+            return;
+        }
+
         if (!surfaceIsSetup && player.getExoPlayer() != null
                 && binding.getRoot().getParent() != null) {
             // make sure there is nothing left over from previous calls
@@ -1627,6 +1680,16 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
 
     public GestureDetector getGestureDetector() {
         return gestureDetector;
+    }
+
+    /**
+     * Returns whether forced audio-only mode is active because the video title
+     * doesn't match any pattern in audio_only_exceptions.json.
+     *
+     * @return true if video is hidden due to title not matching allowed patterns
+     */
+    public boolean isForcedAudioOnlyMode() {
+        return isForcedAudioOnlyMode;
     }
     //endregion
 }
