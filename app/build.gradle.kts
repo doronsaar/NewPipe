@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import com.android.build.api.dsl.ApplicationExtension
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
@@ -28,7 +30,7 @@ kotlin {
     }
 }
 
-android {
+configure<ApplicationExtension> {
     compileSdk = 36
     namespace = "org.schabi.newpipe"
 
@@ -38,9 +40,9 @@ android {
         minSdk = 21
         targetSdk = 35
 
-        versionCode = System.getProperty("versionCodeOverride")?.toInt() ?: 1005
+        versionCode = System.getProperty("versionCodeOverride")?.toInt() ?: 1008
 
-        versionName = "0.28.0"
+        versionName = "0.28.3"
         System.getProperty("versionNameSuffix")?.let { versionNameSuffix = it }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -73,19 +75,18 @@ android {
                 resValue("string", "app_name", "NewPipe $suffix")
             }
             isMinifyEnabled = true
-            isShrinkResources = false // disabled to fix F-Droid"s reproducible build
-            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
     lint {
-        checkReleaseBuilds = false
-        // Or, if you prefer, you can continue to check for errors in release builds,
-        // but continue the build even when errors are found:
+        lintConfig = file("lint.xml")
+        // Continue the debug build even when errors are found
         abortOnError = false
-        // suppress false warning ("Resource IDs will be non-final in Android Gradle Plugin version
-        // 5.0, avoid using them in switch case statements"), which affects only library projects
-        disable += "NonConstantResourceId"
     }
 
     compileOptions {
@@ -98,7 +99,7 @@ android {
 
     sourceSets {
         getByName("androidTest") {
-            assets.srcDir("$projectDir/schemas")
+            assets.directories += "$projectDir/schemas"
         }
     }
 
@@ -109,6 +110,7 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        resValues = true
     }
 
     packaging {
@@ -131,6 +133,13 @@ ksp {
 
 // Custom dependency configuration for ktlint
 val ktlint by configurations.creating
+
+// https://checkstyle.org/#JRE_and_JDK
+tasks.withType<Checkstyle>().configureEach {
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
 
 checkstyle {
     configDirectory = rootProject.file("checkstyle")
@@ -261,7 +270,8 @@ dependencies {
     implementation(libs.lisawray.groupie.viewbinding)
 
     // Image loading
-    implementation(libs.squareup.picasso)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     // Markdown library for Android
     implementation(libs.noties.markwon.core)
