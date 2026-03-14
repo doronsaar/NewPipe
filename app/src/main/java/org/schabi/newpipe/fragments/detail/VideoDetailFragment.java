@@ -224,6 +224,10 @@ public final class VideoDetailFragment
 
     private FragmentVideoDetailBinding binding;
 
+    /** Black overlay covering the video area so only audio is heard (touch passes through). */
+    @Nullable
+    private View audioOnlyBlackOverlay;
+
     private TabAdapter pageAdapter;
 
     private ContentObserver settingsContentObserver;
@@ -384,6 +388,13 @@ public final class VideoDetailFragment
         // Check if it was loading when the fragment was stopped/paused
         if (wasLoading.getAndSet(false) && !wasCleared()) {
             startLoading(false);
+        }
+
+        // Audio-only: re-ensure overlay when returning from background (e.g. after Home).
+        // Run now and again after layout so overlay stays on top after any player re-attach.
+        ensureAudioOnlyOverlay();
+        if (binding != null) {
+            binding.getRoot().post(this::ensureAudioOnlyOverlay);
         }
     }
 
@@ -1284,6 +1295,8 @@ public final class VideoDetailFragment
                     playerUi.removeViewFromParent();
                     binding.playerPlaceholder.addView(playerUi.getBinding().getRoot());
                     playerUi.setupVideoSurfaceIfNeeded();
+                    // Audio-only: cover video area with black overlay (touch passes through)
+                    ensureAudioOnlyOverlay();
                 }
             });
         });
@@ -1291,9 +1304,42 @@ public final class VideoDetailFragment
 
     private void removeVideoPlayerView() {
         makeDefaultHeightForVideoPlaceholder();
+        removeAudioOnlyOverlay();
 
         if (player != null) {
             player.UIs().get(VideoPlayerUi.class).ifPresent(VideoPlayerUi::removeViewFromParent);
+        }
+    }
+
+    private void ensureAudioOnlyOverlay() {
+        if (binding == null || binding.detailThumbnailRootLayout == null) {
+            return;
+        }
+        if (audioOnlyBlackOverlay != null) {
+            if (audioOnlyBlackOverlay.getParent() == binding.detailThumbnailRootLayout) {
+                // Still bring to front (e.g. after Home → return, player view may be on top)
+                audioOnlyBlackOverlay.bringToFront();
+                return;
+            }
+            audioOnlyBlackOverlay = null;
+        }
+        final View overlay = new View(requireContext());
+        overlay.setBackgroundColor(Color.BLACK);
+        overlay.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        overlay.setClickable(false);
+        overlay.setOnTouchListener((v, event) -> false); // pass touch through to player
+        binding.detailThumbnailRootLayout.addView(overlay);
+        overlay.bringToFront();
+        audioOnlyBlackOverlay = overlay;
+        Log.d("NewPipeAudioOnly", "ensureAudioOnlyOverlay: black overlay added (audio-only build)");
+    }
+
+    private void removeAudioOnlyOverlay() {
+        final View overlay = audioOnlyBlackOverlay;
+        if (overlay != null && overlay.getParent() instanceof ViewGroup) {
+            ((ViewGroup) overlay.getParent()).removeView(overlay);
+            audioOnlyBlackOverlay = null;
         }
     }
 
@@ -1359,10 +1405,12 @@ public final class VideoDetailFragment
                         RelativeLayout.LayoutParams.MATCH_PARENT, newHeight));
         binding.detailThumbnailImageView.setMinimumHeight(newHeight);
         if (isPlayerAvailable()) {
-            final int maxHeight = (int) (metrics.heightPixels * MAX_PLAYER_HEIGHT);
-            player.UIs().get(VideoPlayerUi.class).ifPresent(ui ->
-                    ui.getBinding().surfaceView.setHeights(newHeight,
-                            ui.isFullscreen() ? newHeight : maxHeight));
+            // Audio-only: keep surface view at 0 size so video is never visible
+            player.UIs().get(VideoPlayerUi.class).ifPresent(ui -> {
+                ui.getBinding().surfaceView.setHeights(0, 0);
+                ui.getBinding().surfaceView.setLayoutParams(
+                        new RelativeLayout.LayoutParams(0, 0));
+            });
         }
     }
 
@@ -1853,6 +1901,8 @@ public final class VideoDetailFragment
             return;
         }
 
+        // Audio-only: re-ensure black overlay when stream changes (e.g. second video)
+        ensureAudioOnlyOverlay();
         updateOverlayData(info.getName(), info.getUploaderName(), info.getThumbnails());
         if (currentInfo != null && info.getUrl().equals(currentInfo.getUrl())) {
             return;

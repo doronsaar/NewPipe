@@ -641,6 +641,12 @@ public final class Player implements PlaybackListener, Listener {
         // Setup UIs
         UIs.call(PlayerUi::initPlayer);
 
+        // Audio-only: disable video and subtitles from the start so no video is ever rendered
+        Log.d("NewPipeAudioOnly", "initPlayer: disabling VIDEO and TEXT tracks (audio-only build)");
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true));
+
         // Disable media tunneling if requested by the user from ExoPlayer settings
         if (!PreferenceManager.getDefaultSharedPreferences(context)
                 .getBoolean(context.getString(R.string.disable_media_tunneling_key), false)) {
@@ -2191,7 +2197,9 @@ public final class Player implements PlaybackListener, Listener {
             return;
         }
 
-        isAudioOnly = !videoAndSubtitlesEnabled;
+        // Force audio-only: never enable video (or subtitles) in main, popup or background
+        final boolean enableVideoAndSubtitles = false;
+        isAudioOnly = !enableVideoAndSubtitles;
 
         final var item = playQueue.getItem();
         final boolean hasPendingRecovery =
@@ -2229,11 +2237,10 @@ public final class Player implements PlaybackListener, Listener {
             reloadPlayQueueManager();
         });
 
-        // Disable or enable video and subtitles renderers depending of the
-        // videoAndSubtitlesEnabled value
+        // Disable or enable video and subtitles renderers (always disabled for audio-only)
         trackSelector.setParameters(trackSelector.buildUponParameters()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !videoAndSubtitlesEnabled)
-                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !videoAndSubtitlesEnabled));
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enableVideoAndSubtitles)
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !enableVideoAndSubtitles));
     }
 
     /**

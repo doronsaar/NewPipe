@@ -58,6 +58,7 @@ import com.google.android.exoplayer2.Tracks;
 import com.google.android.exoplayer2.text.Cue;
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.ui.CaptionStyleCompat;
+import com.google.android.exoplayer2.video.PlaceholderSurface;
 import com.google.android.exoplayer2.video.VideoSize;
 
 import org.schabi.newpipe.App;
@@ -116,6 +117,8 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
     private final Handler controlsVisibilityHandler = new Handler(Looper.getMainLooper());
     @Nullable
     private SurfaceHolderCallback surfaceHolderCallback;
+    @Nullable
+    private PlaceholderSurface audioOnlyPlaceholderSurface;
     boolean surfaceIsSetup = false;
 
 
@@ -169,6 +172,9 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
 
     private void initViews() {
         setupSubtitleView();
+
+        // Audio-only: give SurfaceView zero size so the video surface "hole" has no visible area
+        binding.surfaceView.setLayoutParams(new RelativeLayout.LayoutParams(0, 0));
 
         binding.resizeTextView
                 .setText(PlayerHelper.resizeTypeOf(context, binding.surfaceView.getResizeMode()));
@@ -1047,7 +1053,7 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
                     break;
 
                 case LIVE_STREAM:
-                    binding.surfaceView.setVisibility(View.VISIBLE);
+                    binding.surfaceView.setVisibility(View.GONE);
                     binding.endScreen.setVisibility(View.GONE);
                     binding.playbackLiveSync.setVisibility(View.VISIBLE);
                     break;
@@ -1065,7 +1071,7 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
                     buildAudioTrackMenu();
 
                     binding.qualityTextView.setVisibility(View.VISIBLE);
-                    binding.surfaceView.setVisibility(View.VISIBLE);
+                    binding.surfaceView.setVisibility(View.GONE);
                     // fallthrough
                 default:
                     binding.endScreen.setVisibility(View.GONE);
@@ -1584,20 +1590,16 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
             // make sure there is nothing left over from previous calls
             clearVideoSurface();
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) { // >=API23
-                surfaceHolderCallback = new SurfaceHolderCallback(context, player.getExoPlayer());
-                binding.surfaceView.getHolder().addCallback(surfaceHolderCallback);
-
-                // ensure player is using an unreleased surface, which the surfaceView might not be
-                // when starting playback on background or during player switching
-                if (binding.surfaceView.getHolder().getSurface().isValid()) {
-                    // initially set the surface manually otherwise
-                    // onRenderedFirstFrame() will not be called
-                    player.getExoPlayer().setVideoSurfaceHolder(binding.surfaceView.getHolder());
-                }
+            // Audio-only: use placeholder surface so video is never displayed
+            // (foreground or background)
+            Log.d("NewPipeAudioOnly", "setupVideoSurfaceIfNeeded: placeholder (audio-only)");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) { // >=API17
+                audioOnlyPlaceholderSurface = PlaceholderSurface.newInstanceV17(context, false);
+                player.getExoPlayer().setVideoSurface(audioOnlyPlaceholderSurface);
             } else {
                 player.getExoPlayer().setVideoSurfaceView(binding.surfaceView);
             }
+            binding.surfaceView.setVisibility(View.GONE);
 
             surfaceIsSetup = true;
         }
@@ -1609,6 +1611,10 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
             binding.surfaceView.getHolder().removeCallback(surfaceHolderCallback);
             surfaceHolderCallback.release();
             surfaceHolderCallback = null;
+        }
+        if (audioOnlyPlaceholderSurface != null) {
+            audioOnlyPlaceholderSurface.release();
+            audioOnlyPlaceholderSurface = null;
         }
         Optional.ofNullable(player.getExoPlayer()).ifPresent(ExoPlayer::clearVideoSurface);
         surfaceIsSetup = false;
