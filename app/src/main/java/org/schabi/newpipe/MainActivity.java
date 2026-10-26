@@ -216,13 +216,8 @@ public class MainActivity extends AppCompatActivity {
 
         final App app = App.getInstance();
 
-        if (sharedPreferences.getBoolean(app.getString(R.string.update_app_key), false)
-                && sharedPreferences
-                .getBoolean(app.getString(R.string.update_check_consent_key), false)) {
-            // Start the worker which is checking all conditions
-            // and eventually searching for a new version.
-            NewVersionWorker.enqueueNewVersionCheckingWork(app, false);
-        }
+        // Compare the installed build with the APK published by deploy/deploy.sh.
+        NewVersionWorker.enqueueNewVersionCheckingWork(app, false);
     }
 
     @Override

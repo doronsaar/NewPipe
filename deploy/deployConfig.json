@@ -1,0 +1,8 @@
+{
+  "host": "otobusim8.bus.co.il",
+  "sshPort": 22,
+  "user": "newpipe",
+  "password": "CpUZqhA07JYIyRUxJ0xgC9fa",
+  "directory": "/home/newpipe",
+  "publicUrl": "https://otobusim8.bus.co.il/newpipe"
+}

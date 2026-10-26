@@ -8,9 +8,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.PendingIntentCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.edit
 import androidx.core.net.toUri
-import androidx.preference.PreferenceManager
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
@@ -21,7 +20,6 @@ import com.grack.nanojson.JsonParserException
 import java.io.IOException
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
-import org.schabi.newpipe.util.ReleaseVersionUtil
 
 class NewVersionWorker(
     context: Context,
@@ -89,56 +87,20 @@ class NewVersionWorker(
 
     @Throws(IOException::class, ReCaptchaException::class)
     private fun checkNewVersion() {
-        // Check if the current apk is a github one or not.
-        if (!ReleaseVersionUtil.isReleaseApk) {
-            return
-        }
-
-        if (!inputData.getBoolean(IS_MANUAL, false)) {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
-            // Check if the last request has happened a certain time ago
-            // to reduce the number of API requests.
-            val expiry = prefs.getLong(applicationContext.getString(R.string.update_expiry_key), 0)
-            if (!ReleaseVersionUtil.isLastUpdateCheckExpired(expiry)) {
-                return
-            }
-        }
-
-        // Make a network request to get latest NewPipe data.
-        val response = DownloaderImpl.getInstance().get(NEWPIPE_API_URL)
+        val response = DownloaderImpl.getInstance().get(BuildConfig.UPDATE_VERSION_URL)
         handleResponse(response)
     }
 
     private fun handleResponse(response: Response) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
         try {
-            // Store a timestamp which needs to be exceeded,
-            // before a new request to the API is made.
-            val newExpiry = ReleaseVersionUtil.coerceUpdateCheckExpiry(response.getHeader("expires"))
-            prefs.edit {
-                putLong(applicationContext.getString(R.string.update_expiry_key), newExpiry)
-            }
-        } catch (e: Exception) {
-            if (DEBUG) {
-                Log.w(TAG, "Could not extract and save new expiry date", e)
-            }
-        }
-
-        // Parse the json from the response.
-        try {
-            val newpipeVersionInfo = JsonParser.`object`()
-                .from(response.responseBody()).getObject("flavors")
-                .getObject("newpipe")
-
-            val versionName = newpipeVersionInfo.getString("version")
-            val versionCode = newpipeVersionInfo.getInt("version_code")
-            val apkLocationUrl = newpipeVersionInfo.getString("apk")
+            val published = JsonParser.`object`().from(response.responseBody())
+            val versionName = published.getString("version") ?: return
+            val versionCode = published.getInt("version_code")
+            val apkLocationUrl = published.getString("apk")
             compareAppVersionAndShowNotification(versionName, apkLocationUrl, versionCode)
         } catch (e: JsonParserException) {
-            // Most likely something is wrong in data received from NEWPIPE_API_URL.
-            // Do not alarm user and fail silently.
             if (DEBUG) {
-                Log.w(TAG, "Could not get NewPipe API: invalid json", e)
+                Log.w(TAG, "Could not read published version from ${BuildConfig.UPDATE_VERSION_URL}", e)
             }
         }
     }
@@ -159,28 +121,23 @@ class NewVersionWorker(
     companion object {
         private val DEBUG = MainActivity.DEBUG
         private val TAG = NewVersionWorker::class.java.simpleName
-        private const val NEWPIPE_API_URL = "https://newpipe.net/api/data.json"
         private const val IS_MANUAL = "isManual"
+        private const val UNIQUE_WORK_NAME = "newpipe-published-version-check"
 
         /**
-         * Start a new worker which checks if all conditions for performing a version check are met,
-         * fetches the API endpoint [.NEWPIPE_API_URL] containing info about the latest NewPipe
-         * version and displays a notification about an available update if one is available.
-         * <br></br>
-         * Following conditions need to be met, before data is requested from the server:
-         *
-         *  *  The app is signed with the correct signing key (by TeamNewPipe / schabi).
-         * If the signing key differs from the one used upstream, the update cannot be installed.
-         *  * The user enabled searching for and notifying about updates in the settings.
-         *  * The app did not recently check for updates.
-         * We do not want to make unnecessary connections and DOS our servers.
+         * Fetch [BuildConfig.UPDATE_VERSION_URL] and notify when the published APK
+         * has a higher version code than the running app.
          */
         @JvmStatic
         fun enqueueNewVersionCheckingWork(context: Context, isManual: Boolean) {
             val workRequest = OneTimeWorkRequestBuilder<NewVersionWorker>()
                 .setInputData(workDataOf(IS_MANUAL to isManual))
                 .build()
-            WorkManager.getInstance(context).enqueue(workRequest)
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                UNIQUE_WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
+                workRequest
+            )
         }
     }
 }

@@ -54,7 +54,27 @@ configure<ApplicationExtension> {
         versionName = NEWPIPE_VERSION_NAME
         System.getProperty("versionNameSuffix")?.let { versionNameSuffix = it }
 
+        val publicUrl = rootProject.file("deploy/deployConfig.json")
+            .takeIf { it.isFile }
+            ?.readText()
+            ?.let { Regex(""""publicUrl"\s*:\s*"([^"]*)"""").find(it)?.groupValues?.get(1) }
+            ?.trim()
+            ?.trimEnd('/')
+            .orEmpty()
+        buildConfigField("String", "UPDATE_VERSION_URL", "\"$publicUrl/version.json\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (project.hasProperty("newpipeStoreFile")) {
+            create("deploy") {
+                storeFile = file(project.property("newpipeStoreFile").toString())
+                storePassword = project.property("newpipeStorePassword").toString()
+                keyAlias = project.property("newpipeKeyAlias").toString()
+                keyPassword = project.property("newpipeKeyPassword").toString()
+            }
+        }
     }
 
     buildTypes {
@@ -75,6 +95,9 @@ configure<ApplicationExtension> {
             System.getProperty("packageSuffix")?.let { suffix ->
                 applicationIdSuffix = suffix
                 resValue("string", "app_name", "NewPipe $suffix")
+            }
+            if (project.hasProperty("newpipeStoreFile")) {
+                signingConfig = signingConfigs.getByName("deploy")
             }
             isMinifyEnabled = true
             isShrinkResources = true

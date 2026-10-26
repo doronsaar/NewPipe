@@ -12,6 +12,8 @@ captures/
 *.class
 app/debug/
 app/release/
+deploy/*.keystore
+deploy/keystore.properties
 
 # vscode / eclipse files
 *.classpath
