@@ -4,7 +4,7 @@
     <string name="tab_about">Ɣef &amp; ISTEQSIYEN</string>
     <string name="feed_create_new_group_button_title">Amaynut</string>
     <string name="all">Akk</string>
-    <string name="kore_not_found">Sbedd asnas n Kore yexxuṣen\?</string>
+    <string name="kore_not_found">Sbedd asnas n Kore yexxuṣen?</string>
     <string name="install">Sbedd</string>
     <string name="settings_category_downloads_title">Sader</string>
     <string name="downloads_title">Isadaren</string>
@@ -32,7 +32,7 @@
     <string name="msg_running">Azdam n NewPipe</string>
     <string name="restore_defaults">Err-d imezwar</string>
     <string name="channel_created_by">Yerna-t %s</string>
-    <string name="delete_playlist_prompt">Kkes tabdart-a n tɣuri\?</string>
+    <string name="delete_playlist_prompt">Kkes tabdart-a n tɣuri?</string>
     <string name="clear">Sfeḍ</string>
     <string name="recently_added">Ittwarna taggara-agi</string>
     <string name="default_audio_format_title">Amasal n imesli amezwer</string>
@@ -223,4 +223,12 @@
     <string name="metadata_tags">Tibzimin</string>
     <string name="blank_page_summary">Asebter d ilem</string>
     <string name="settings_category_exoplayer_title">Iɣewwaṛen n ExoPlayer</string>
+    <plurals name="days">
+        <item quantity="one">%d n wass</item>
+        <item quantity="other">%d n wussan</item>
+    </plurals>
+    <plurals name="videos">
+        <item quantity="one">%s n tvidyut</item>
+        <item quantity="other">%s n tvidyutin</item>
+    </plurals>
 </resources>
