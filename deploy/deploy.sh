@@ -78,13 +78,14 @@ echo "Building release APK ..."
     -PnewpipeKeyPassword="$keyPassword"
 )
 
+APK_NAME="newpipe_audioonly.apk"
 METADATA="$ROOT/app/build/outputs/apk/release/output-metadata.json"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
-python3 - "$METADATA" "$STAGE" "$public_url" <<'PY'
+python3 - "$METADATA" "$STAGE" "$public_url" "$APK_NAME" <<'PY'
 import json, pathlib, shutil, sys
-metadata_path, stage, public_url = sys.argv[1:]
+metadata_path, stage, public_url, apk_name = sys.argv[1:]
 metadata = json.loads(pathlib.Path(metadata_path).read_text(encoding="utf-8"))
 element = metadata["elements"][0]
 apk_src = pathlib.Path(metadata_path).parent / element["outputFile"]
@@ -92,11 +93,11 @@ if not apk_src.is_file():
     raise SystemExit(f"missing apk {apk_src}")
 version_name = element["versionName"]
 version_code = int(element["versionCode"])
-shutil.copyfile(apk_src, pathlib.Path(stage) / "NewPipe.apk")
+shutil.copyfile(apk_src, pathlib.Path(stage) / apk_name)
 version = {
     "version": version_name,
     "version_code": version_code,
-    "apk": f"{public_url}/NewPipe.apk",
+    "apk": f"{public_url}/{apk_name}",
 }
 pathlib.Path(stage, "version.json").write_text(
     json.dumps(version, indent=2) + "\n", encoding="utf-8"
@@ -105,11 +106,11 @@ page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>NewPipe {version_name}</title>
+<title>NewPipe Audio Only {version_name}</title>
 </head>
 <body>
-<h1>NewPipe {version_name}</h1>
-<p><a href="NewPipe.apk">Download NewPipe.apk</a> (version code {version_code})</p>
+<h1>NewPipe Audio Only {version_name}</h1>
+<p><a href="{apk_name}">Download {apk_name}</a> (version code {version_code})</p>
 </body>
 </html>
 """
@@ -122,7 +123,7 @@ if [[ -z "$APKSIGNER" ]]; then
   echo "deploy.sh: apksigner not found under $ANDROID_HOME/build-tools" >&2
   exit 1
 fi
-"$APKSIGNER" verify "$STAGE/NewPipe.apk" >/dev/null
+"$APKSIGNER" verify "$STAGE/$APK_NAME" >/dev/null
 
 echo "Publishing latest APK to $public_url ..."
 export SSHPASS="$password"
@@ -151,7 +152,7 @@ batch="$STAGE/upload.batch"
     }
   '
   cat <<EOF
-put $STAGE/NewPipe.apk NewPipe.apk
+put $STAGE/$APK_NAME $APK_NAME
 put $STAGE/version.json version.json
 put $STAGE/index.html index.html
 EOF
@@ -171,14 +172,14 @@ if local != remote:
     raise SystemExit(f"published version.json does not match the build:\n{local}\n{remote}")
 print(f"version.json {local['version']} ({local['version_code']})")
 PY
-curl -fsS --max-time 180 "$public_url/NewPipe.apk" -o "$downloaded"
-cmp -s "$STAGE/NewPipe.apk" "$downloaded"
+curl -fsS --max-time 180 "$public_url/$APK_NAME" -o "$downloaded"
+cmp -s "$STAGE/$APK_NAME" "$downloaded"
 rm -f "$downloaded"
 page="$(curl -fsS --max-time 30 "$public_url/")"
-if [[ "$page" != *'href="NewPipe.apk"'* ]]; then
-  echo "deploy.sh: public page does not link to NewPipe.apk" >&2
+if [[ "$page" != *"href=\"$APK_NAME\""* ]]; then
+  echo "deploy.sh: public page does not link to $APK_NAME" >&2
   exit 1
 fi
 
 unset SSHPASS
-echo "Published $public_url/NewPipe.apk"
+echo "Published $public_url/$APK_NAME"

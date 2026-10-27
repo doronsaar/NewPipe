@@ -112,6 +112,6 @@ class AndroidDownloadStorageActions(context: Context) : DownloadStorageActions {
 
     private companion object {
         const val HOST_CLASS = "org.schabi.newpipe.settings.ComposeDownloadStorage"
-        const val NEWPIPE_FOLDER = "NewPipe"
+        const val NEWPIPE_FOLDER = "NewPipe Audio Only"
     }
 }
