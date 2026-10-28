@@ -582,7 +582,7 @@
     <string name="updates_setting_title">Updates</string>
     <string name="updates_setting_description">Show a notification to prompt app update when a new version is available</string>
     <string name="check_for_updates">Check for updates</string>
-    <string name="auto_update_check_description">NewPipe can automatically check for new versions from time to time and notify you once they are available.\nDo you want to enable this?</string>
+    <string name="auto_update_check_description">NewPipe Audio Only can automatically check for new versions from time to time and notify you once they are available.\nDo you want to enable this?</string>
     <string name="manual_update_title" translatable="false">@string/check_for_updates</string>
     <string name="manual_update_description">Manually check for new versions</string>
 
@@ -607,9 +607,9 @@
     <string name="low_quality_smaller">Low quality (smaller)</string>
     <string name="dont_show">Don\'t show</string>
     <!-- App update notification -->
-    <string name="app_update_unavailable_toast">You are running the latest version of NewPipe</string>
-    <string name="app_update_available_notification_title">NewPipe update is available!</string>
-    <string name="app_update_available_notification_text">Tap to download %s</string>
+    <string name="app_update_unavailable_toast">You are running the latest version of NewPipe Audio Only</string>
+    <string name="app_update_available_notification_title">NewPipe Audio Only update is available!</string>
+    <string name="app_update_available_notification_text">Tap to download NewPipe Audio Only %s</string>
     <string name="missions_header_finished">Finished</string>
     <string name="missions_header_pending">Pending</string>
     <string name="paused">paused</string>
