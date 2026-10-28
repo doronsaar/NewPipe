@@ -86,6 +86,7 @@ echo "Building release APK ..."
 (
   cd "$ROOT"
   ./gradlew :app:assembleRelease \
+    -DversionCodeOverride="$(TZ=Asia/Jerusalem date +%y%m%d%H)" \
     -PnewpipeStoreFile="$KEYSTORE" \
     -PnewpipeStorePassword="$storePassword" \
     -PnewpipeKeyAlias="$keyAlias" \
