@@ -25,6 +25,9 @@ class NewVersionWorker(
     context: Context,
     workerParams: WorkerParameters
 ) : Worker(context, workerParams) {
+    private var publishedVersionName: String? = null
+    private var publishedVersionCode: Int = 0
+    private var publishedApkUrl: String? = null
 
     /**
      * Method to compare the current and latest available app version.
@@ -97,6 +100,9 @@ class NewVersionWorker(
             val versionName = published.getString("version") ?: return
             val versionCode = published.getInt("version_code")
             val apkLocationUrl = published.getString("apk")
+            publishedVersionName = versionName
+            publishedVersionCode = versionCode
+            publishedApkUrl = apkLocationUrl
             compareAppVersionAndShowNotification(versionName, apkLocationUrl, versionCode)
         } catch (e: JsonParserException) {
             if (DEBUG) {
@@ -108,7 +114,21 @@ class NewVersionWorker(
     override fun doWork(): Result {
         return try {
             checkNewVersion()
-            Result.success()
+            val versionName = publishedVersionName
+            val apkUrl = publishedApkUrl
+            if (versionName != null && apkUrl != null &&
+                publishedVersionCode > BuildConfig.VERSION_CODE
+            ) {
+                Result.success(
+                    workDataOf(
+                        KEY_VERSION_NAME to versionName,
+                        KEY_VERSION_CODE to publishedVersionCode,
+                        KEY_APK_URL to apkUrl
+                    )
+                )
+            } else {
+                Result.success()
+            }
         } catch (e: IOException) {
             Log.w(TAG, "Could not fetch NewPipe API: probably network problem", e)
             Result.failure()
@@ -122,7 +142,10 @@ class NewVersionWorker(
         private val DEBUG = MainActivity.DEBUG
         private val TAG = NewVersionWorker::class.java.simpleName
         private const val IS_MANUAL = "isManual"
-        private const val UNIQUE_WORK_NAME = "newpipe-published-version-check"
+        const val UNIQUE_WORK_NAME = "newpipe-published-version-check"
+        const val KEY_VERSION_NAME = "versionName"
+        const val KEY_VERSION_CODE = "versionCode"
+        const val KEY_APK_URL = "apkUrl"
 
         /**
          * Fetch [BuildConfig.UPDATE_VERSION_URL] and notify when the published APK

@@ -610,6 +610,8 @@
     <string name="app_update_unavailable_toast">You are running the latest version of NewPipe Audio Only</string>
     <string name="app_update_available_notification_title">NewPipe Audio Only update is available!</string>
     <string name="app_update_available_notification_text">Tap to download NewPipe Audio Only %s</string>
+    <string name="app_update_available_dialog_message">NewPipe Audio Only %s is ready to install.</string>
+    <string name="app_update_upgrade">Upgrade</string>
     <string name="missions_header_finished">Finished</string>
     <string name="missions_header_pending">Pending</string>
     <string name="paused">paused</string>

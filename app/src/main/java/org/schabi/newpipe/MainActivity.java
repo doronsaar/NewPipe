@@ -56,7 +56,10 @@ import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentContainerView;
 import androidx.fragment.app.FragmentManager;
+import androidx.lifecycle.Lifecycle;
 import androidx.preference.PreferenceManager;
+import androidx.work.WorkInfo;
+import androidx.work.WorkManager;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 
@@ -131,9 +134,15 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int ORDER = 0;
     public static final String KEY_IS_IN_BACKGROUND = "is_in_background";
+    private static final String KEY_SHOWN_UPDATE_VERSION_CODE = "shown_update_version_code";
 
     private SharedPreferences sharedPreferences;
     private SharedPreferences.Editor sharedPrefEditor;
+    private AlertDialog appUpdateDialog;
+    private int shownUpdateVersionCode;
+    private int pendingUpdateVersionCode;
+    @Nullable private String pendingUpdateVersionName;
+    @Nullable private String pendingUpdateApkUrl;
     /*//////////////////////////////////////////////////////////////////////////
     // Activity's LifeCycle
     //////////////////////////////////////////////////////////////////////////*/
@@ -216,8 +225,25 @@ public class MainActivity extends AppCompatActivity {
 
         final App app = App.getInstance();
 
+        if (savedInstanceState != null) {
+            shownUpdateVersionCode = savedInstanceState.getInt(KEY_SHOWN_UPDATE_VERSION_CODE);
+        }
+
         // Compare the installed build with the APK published by deploy/deploy.sh.
         NewVersionWorker.enqueueNewVersionCheckingWork(app, false);
+        WorkManager.getInstance(this)
+                .getWorkInfosForUniqueWorkLiveData(NewVersionWorker.UNIQUE_WORK_NAME)
+                .observe(this, this::onPublishedVersionChecked);
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull final Bundle outState) {
+        super.onSaveInstanceState(outState);
+        // Keep a visible dialog across rotation. A dismissed dialog stays dismissed.
+        if (appUpdateDialog != null && appUpdateDialog.isShowing()) {
+            shownUpdateVersionCode = 0;
+        }
+        outState.putInt(KEY_SHOWN_UPDATE_VERSION_CODE, shownUpdateVersionCode);
     }
 
     @Override
@@ -225,6 +251,7 @@ public class MainActivity extends AppCompatActivity {
         super.onStart();
         sharedPrefEditor.putBoolean(KEY_IS_IN_BACKGROUND, false).apply();
         Log.d(TAG, "App moved to foreground");
+        showPendingAppUpdateDialog();
     }
 
     @Override
@@ -233,6 +260,71 @@ public class MainActivity extends AppCompatActivity {
         sharedPrefEditor.putBoolean(KEY_IS_IN_BACKGROUND, true).apply();
         Log.d(TAG, "App moved to background");
     }
+
+    private void onPublishedVersionChecked(@NonNull final List<WorkInfo> infos) {
+        WorkInfo succeeded = null;
+        for (final WorkInfo info : infos) {
+            final WorkInfo.State state = info.getState();
+            if (state == WorkInfo.State.ENQUEUED
+                    || state == WorkInfo.State.RUNNING
+                    || state == WorkInfo.State.BLOCKED) {
+                return;
+            }
+            if (state == WorkInfo.State.SUCCEEDED) {
+                succeeded = info;
+            }
+        }
+        if (succeeded == null) {
+            return;
+        }
+
+        final int versionCode = succeeded.getOutputData()
+                .getInt(NewVersionWorker.KEY_VERSION_CODE, 0);
+        final String versionName = succeeded.getOutputData()
+                .getString(NewVersionWorker.KEY_VERSION_NAME);
+        final String apkUrl = succeeded.getOutputData().getString(NewVersionWorker.KEY_APK_URL);
+        if (versionCode <= BuildConfig.VERSION_CODE || versionName == null || apkUrl == null) {
+            return;
+        }
+
+        pendingUpdateVersionCode = versionCode;
+        pendingUpdateVersionName = versionName;
+        pendingUpdateApkUrl = apkUrl;
+        showPendingAppUpdateDialog();
+    }
+
+    /**
+     * Shows the upgrade dialog once per available version code while this activity is visible.
+     * Upgrade opens the published APK.
+     */
+    private void showPendingAppUpdateDialog() {
+        if (pendingUpdateVersionName == null || pendingUpdateApkUrl == null) {
+            return;
+        }
+        if (pendingUpdateVersionCode <= BuildConfig.VERSION_CODE
+                || pendingUpdateVersionCode == shownUpdateVersionCode) {
+            return;
+        }
+        if (isFinishing()
+                || !getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.STARTED)) {
+            return;
+        }
+        if (appUpdateDialog != null && appUpdateDialog.isShowing()) {
+            return;
+        }
+
+        final String apkUrl = pendingUpdateApkUrl;
+        shownUpdateVersionCode = pendingUpdateVersionCode;
+        appUpdateDialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.app_update_available_notification_title)
+                .setMessage(getString(R.string.app_update_available_dialog_message,
+                        pendingUpdateVersionName))
+                .setPositiveButton(R.string.app_update_upgrade, (dialog, which) ->
+                        ShareUtils.openUrlInBrowser(this, apkUrl))
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
     private void setupDrawer() throws ExtractionException {
         addDrawerMenuForCurrentService();
 
